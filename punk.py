@@ -28,7 +28,6 @@ import os
 import sys
 import threading
 import argparse
-import ipaddress
 
 try: 
     import queue as queue
@@ -154,7 +153,7 @@ class crack_host(object):
 		self.magic  = host_string.split("|")[0]
 		self.salt   = host_string.split("|")[1]
 		self.hashed = host_string.split("|")[2]
-		self.subnet = ipaddress.ip_network(subnet)
+		self.subnet = subnet # TODO
 
 	def run(self):
 
@@ -168,8 +167,8 @@ class crack_host(object):
 			worker.start()
 			threads.append(worker)
 
-		for host in self.subnet.hosts():
-			q.put(str(host))
+		#for host in self.subnet.hosts(): # TODO
+		#	q.put(str(host))              # TODO
 
 		q.join()
 		 
