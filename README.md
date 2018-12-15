@@ -51,8 +51,8 @@ python3 one-liner fileless ( with --crack parameter ):
 
 
 ## TODO
+
+ - !! Hashed known_hosts bruteforce ( https://blog.rootshell.be/2010/11/03/bruteforcing-ssh-known_hosts-files/ )
  - improve private keys hunting including dsa keys
  - Recursion
  - SSH keys with password bruteforce
- - Hashed known_hosts bruteforce ( https://blog.rootshell.be/2010/11/03/bruteforcing-ssh-known_hosts-files/ )
-

@@ -73,9 +73,6 @@ class WorkerThread(threading.Thread) :
 							if CMD != '':
 								sys.stdout.write ("\033[92m[*]\033[0m Executing \033[92m%s\033[0m.\n" % (CMD))
 								os.system("ssh -oBatchMode=yes -oStrictHostKeyChecking=no -oPasswordAuthentication=no -oConnectTimeout=8 %s@%s -i %s -q -t \"%s\" " % (user,host,key,CMD))
-
-
-
 					except:
 						pass
  
@@ -150,9 +147,9 @@ def discovery(args):
 
 								if args.crack != "":
 									# crack the hashed known hosts
-									sys.stdout.write ("cracking..."+host)
+									sys.stdout.write ("TODO")#+host)
 
-						if encrypted_knownhosts:
+						if encrypted_knownhosts and args.crack == "":
 							sys.stdout.write ("\033[93m[!]\033[0m Encrypted known host at \033[93m%s" % home + "/.ssh/known_hosts\033[0m\n")
 							sys.stdout.write ("\033[93m[!]\033[0m Run with \033[93m--crack\033[0m flag to break it\n")
 
@@ -192,7 +189,12 @@ def discovery(args):
 					else:
 						encrypted_knownhosts = True
 
-				if encrypted_knownhosts:
+						if args.crack != "":
+							# crack the hashed known hosts
+							sys.stdout.write ("TODO")#+host)
+
+
+				if encrypted_knownhosts and args.crack == "":
 						sys.stdout.write ("\033[93m[!]\033[0m Encrypted known host at \033[93m%s" % args.home + homes + "/.ssh/known_hosts\033[0m\n")
 						sys.stdout.write ("\033[93m[!]\033[0m Run with \033[93m%s--crack\033[0m flag to break it\n")
 
