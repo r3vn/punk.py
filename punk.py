@@ -332,7 +332,7 @@ if __name__ == "__main__":
 		sys.stdout.write ("\n\033[92m[*]\033[0m known hosts found:\n\033[92m\n")
 
 		for host in knownHosts:
-			sys.stdout.write ("\t"+host)
+			sys.stdout.write ("\t"+ host+ "\n")
 
 	sys.stdout.write ("\n\033[92m[*]\033[0m Starting keys bruteforcing...\n")
 	Attack = attack(args.run)
