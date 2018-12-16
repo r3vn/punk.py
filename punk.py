@@ -28,11 +28,19 @@ import os
 import sys
 import threading
 import argparse
+import base64
+import hashlib
+import re
+import socket
+import struct
+import hmac
+import binascii
 
 try: 
     import queue as queue
 except ImportError:
     import Queue as queue
+
 
 homesBlacklist = ["/dev/null","/var/empty","/bin","/sbin"]
 shellBlacklist = ["/sbin/nologin","/bin/false","/usr/sbin/nologin","/bin/sync"]
@@ -88,7 +96,7 @@ class CrackThread(threading.Thread) :
 		self.tid    = tid
 		self.ips    = ips
 		self.magic  = magic
-		self.salt   = salt
+		self.salt   = base64.b64decode(salt)
 		self.hashed = hashed
 
  
@@ -96,15 +104,22 @@ class CrackThread(threading.Thread) :
 		while True :
 			host = None 
 			try :
-				host = self.queue.get(timeout=1)
+				ip_try = self.queue.get(timeout=1)
  
 			except 	queue.Empty :
 				return
- 
-			
-				# TODO
- 
- 
+
+
+			h = hmac.new(self.salt, msg=ip_try.encode(), digestmod=hashlib.sha1) # FIXME
+			ip_hash = base64.b64encode(h.digest()).decode()
+
+
+			if ip_hash == self.hashed:
+				knownHosts.append(ip_try)
+				sys.stdout.write ("\033[92m[*]\033[0m Found \033[92m%s\033[0m\n" % (ip_try))
+
+			#sys.stdout.write ("\n-----\nip: "+ip_try+"\n salt: "+self.salt.decode()+"\n output: "+ip_hash+"\ntarget: "+self.hashed)
+
 			self.queue.task_done()
 
 
@@ -150,9 +165,9 @@ class crack_host(object):
 	def __init__(self, host_string, subnet):
 		""" crack an encrypted known host """
 
-		self.magic  = host_string.split("|")[0]
-		self.salt   = host_string.split("|")[1]
-		self.hashed = host_string.split("|")[2]
+		self.magic  = host_string.split("|")[1]
+		self.salt   = host_string.split("|")[2]
+		self.hashed = host_string.split("|")[3].split(" ")[0]
 		self.subnet = subnet # TODO
 
 	def run(self):
@@ -167,8 +182,8 @@ class crack_host(object):
 			worker.start()
 			threads.append(worker)
 
-		#for host in self.subnet.hosts(): # TODO
-		#	q.put(str(host))              # TODO
+		for host in ipv4_range(self.subnet): # TODO
+			q.put(str(host))              # TODO
 
 		q.join()
 		 
@@ -216,17 +231,21 @@ def discovery(args):
 									knownHosts.append(hostname)
 							else:
 								encrypted_knownhosts = True
-
-								if args.crack != "":
-									# crack the hashed known hosts
-									sys.stdout.write ("\033[92m[*]\033[0m Cracking known host on %s/.ssh/known_hosts...\033[0m\n" % home )
-									crack_host(host, args.crack)
-									sys.stdout.write ("\033[92m[*]\033[0m done.\n")
+									
 
 						if encrypted_knownhosts and args.crack == "":
 							sys.stdout.write ("\033[93m[!]\033[0m Encrypted known host at \033[93m%s/.ssh/known_hosts\033[0m\n" % home )
 							sys.stdout.write ("\033[93m[!]\033[0m Run with \033[93m--crack\033[0m flag to break it\n")
 
+						elif encrypted_knownhosts and args.crack != "":
+							# crack the hashed known hosts
+							sys.stdout.write ("\033[92m[*]\033[0m Cracking known hosts on \033[92m%s/.ssh/known_hosts...\033[0m\n" % home )
+							FK = open(home + "/.ssh/known_hosts")
+							for host in FK:
+								if host.find("|") >= 0:
+									crack_obj = crack_host(host, args.crack)
+									crack_obj.run()
+							#sys.stdout.write ("\033[92m[*]\033[0m Cracking done.\n")
 
 						FK.close()
 
@@ -263,21 +282,55 @@ def discovery(args):
 					else:
 						encrypted_knownhosts = True
 
-						if args.crack != "":
-							# crack the hashed known hosts
-							sys.stdout.write ("\033[92m[*]\033[0m Cracking known host on %s/.ssh/known_hosts...\033[0m\n" % home )
-							crack_host(host, args.crack)
-							sys.stdout.write ("\033[92m[*]\033[0m done.\n")
-
 
 				if encrypted_knownhosts and args.crack == "":
-						sys.stdout.write ("\033[93m[!]\033[0m Encrypted known host at \033[93m%s/.ssh/known_hosts\033[0m\n" % args.home )
-						sys.stdout.write ("\033[93m[!]\033[0m Run with \033[93m%s--crack\033[0m flag to break it\n")
+					sys.stdout.write ("\033[93m[!]\033[0m Encrypted known host at \033[93m%s/.ssh/known_hosts\033[0m\n" % args.home )
+					sys.stdout.write ("\033[93m[!]\033[0m Run with \033[93m%s--crack\033[0m flag to break it\n")
+
+				elif encrypted_knownhosts and args.crack != "":
+					# crack the hashed known hosts
+					sys.stdout.write ("\033[92m[*]\033[0m Cracking known hosts on \033[92m%s/.ssh/known_hosts...\033[0m\n" % args.home )
+					open(args.home+homes + "/.ssh/known_hosts")
+					for host in FK:
+						if host.find("|") >= 0:
+							crack_obj = crack_host(host, args.crack)
+							crack_obj.run()
 
 				FK.close()
 	
 	return True
 
+# Avoid ipaddress library since is not supported in python2 
+# https://stackoverflow.com/a/41386874
+def inet_atoi(ipv4_str):
+    """Convert dotted ipv4 string to int"""
+    # note: use socket for packed binary then struct to unpack
+    return struct.unpack("!I", socket.inet_aton(ipv4_str))[0]
+
+def inet_itoa(ipv4_int):
+    """Convert int to dotted ipv4 string"""
+    # note: use struct to pack then socket to string
+    return socket.inet_ntoa(struct.pack("!I", ipv4_int))
+
+def ipv4_range(ipaddr):
+    """Return a list of IPv4 address contianed in a cidr address range"""
+    # split out for example 192.168.1.1:22/24
+    ipv4_str, port_str, cidr_str = re.match(
+        r'([\d\.]+)(:\d+)?(/\d+)?', ipaddr).groups()
+
+    # convert as needed
+    ipv4_int = inet_atoi(ipv4_str)
+    port_str = port_str or ''
+    cidr_str = cidr_str or ''
+    cidr_int = int(cidr_str[1:]) if cidr_str else 0
+
+    # mask ipv4
+    ipv4_base = ipv4_int & (0xffffffff << (32 - cidr_int))
+
+    # generate list
+    addrs = [inet_itoa(ipv4_base + val)
+        for val in range(1 << (32 - cidr_int) + 2)]
+    return addrs
 
 
 if __name__ == "__main__":

